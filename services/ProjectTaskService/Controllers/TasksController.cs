@@ -25,6 +25,11 @@ public class TasksController : ControllerBase
         [FromHeader(Name = "X-User-Id")] Guid? actorUserId, CancellationToken ct) =>
         ExecuteAsync(async () => Ok(await _tasks.GetAsync(id, actorUserId, ct)));
 
+    [HttpGet("/projects/{projectId:guid}/tasks/unassigned")]
+    public Task<IActionResult> GetUnassignedTasks(Guid projectId,
+        [FromHeader(Name = "X-User-Id")] Guid? actorUserId, CancellationToken ct) =>
+        ExecuteAsync(async () => Ok(await _tasks.GetUnassignedAsync(projectId, actorUserId, ct)));
+
     [HttpPatch("{id:guid}")]
     public Task<IActionResult> UpdateTask(Guid id, UpdateTaskRequest request,
         [FromHeader(Name = "X-User-Id")] Guid actorUserId, CancellationToken ct) =>

@@ -17,6 +17,15 @@ public class TaskRepository : ITaskRepository
     public Task<TaskItem?> GetTaskAsync(Guid taskId, CancellationToken ct) =>
         _db.Tasks.FirstOrDefaultAsync(t => t.Id == taskId && !t.IsDeleted, ct);
 
+    public Task<List<TaskItem>> GetUnassignedTasksAsync(Guid projectId, CancellationToken ct) =>
+        _db.Tasks
+            .Where(task => task.ProjectId == projectId &&
+                task.AssigneeUserId == null &&
+                !task.IsDeleted)
+            .OrderBy(task => task.CreatedAt)
+            .ThenBy(task => task.Id)
+            .ToListAsync(ct);
+
     public Task<List<LabelResponse>> GetActiveLabelsAsync(Guid taskId, CancellationToken ct) =>
         _db.TaskLabels
             .Where(link => link.TaskId == taskId)
