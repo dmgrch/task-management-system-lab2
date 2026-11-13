@@ -108,6 +108,26 @@ paths:
                 type: array
                 items: { $ref: '#/components/schemas/TaskResponse' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /projects/{projectId}/tasks/unassigned:
+    get:
+      summary: List unassigned project tasks
+      description: Returns active tasks in the project that do not have an assignee, ordered by creation time and task ID.
+      tags: [Tasks]
+      parameters:
+        - $ref: '#/components/parameters/ProjectIdPath'
+        - $ref: '#/components/parameters/ActorUserIdHeader'
+      responses:
+        '200':
+          description: Unassigned project tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TaskResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/BadGateway' }
   /tasks/{taskId}:
     get:
       summary: Получить задачу
@@ -456,6 +476,11 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     Conflict:
       description: Конфликт бизнес-правил
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadGateway:
+      description: User access service is unavailable
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }

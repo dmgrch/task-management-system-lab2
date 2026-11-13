@@ -108,6 +108,98 @@ public class TaskServiceTests
     }
 
     [Fact]
+    public async Task GetUnassigned_FiltersAndOrdersTasks()
+    {
+        using var db = NewDb();
+        db.Projects.Add(NewProject());
+        var sameCreatedAt = new DateTime(2026, 1, 2, 12, 0, 0, DateTimeKind.Utc);
+        var older = NewTask();
+        older.Id = Guid.Parse("00000000-0000-0000-0000-000000000003");
+        older.CreatedAt = sameCreatedAt.AddMinutes(-1);
+        var firstAtSameTime = NewTask();
+        firstAtSameTime.Id = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        firstAtSameTime.CreatedAt = sameCreatedAt;
+        var secondAtSameTime = NewTask();
+        secondAtSameTime.Id = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        secondAtSameTime.CreatedAt = sameCreatedAt;
+        var assigned = NewTask();
+        assigned.AssigneeUserId = OwnerId;
+        var deleted = NewTask();
+        deleted.IsDeleted = true;
+        var otherProject = NewTask();
+        otherProject.ProjectId = Guid.NewGuid();
+        db.Tasks.AddRange(secondAtSameTime, assigned, deleted, otherProject, older, firstAtSameTime);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db).GetUnassignedAsync(
+            ProjectId, OwnerId, CancellationToken.None);
+
+        Assert.Equal(
+            new[] { older.Id, firstAtSameTime.Id, secondAtSameTime.Id },
+            result.Select(task => task.Id));
+        Assert.All(result, task => Assert.Null(task.AssigneeUserId));
+    }
+
+    [Fact]
+    public async Task GetUnassigned_ReturnsEmptyListWhenNoTasksMatch()
+    {
+        using var db = NewDb();
+        db.Projects.Add(NewProject());
+        var assigned = NewTask();
+        assigned.AssigneeUserId = OwnerId;
+        db.Tasks.Add(assigned);
+        await db.SaveChangesAsync();
+
+        var result = await NewService(db).GetUnassignedAsync(
+            ProjectId, OwnerId, CancellationToken.None);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task GetUnassigned_RejectsMissingProject()
+    {
+        using var db = NewDb();
+
+        var error = await Assert.ThrowsAsync<TaskOperationException>(() =>
+            NewService(db).GetUnassignedAsync(ProjectId, OwnerId, CancellationToken.None));
+
+        Assert.Equal(TaskErrorKind.NotFound, error.Kind);
+        Assert.Equal("PROJECT_NOT_FOUND", error.Code);
+    }
+
+    [Fact]
+    public async Task GetUnassigned_RequiresActorHeader()
+    {
+        using var db = NewDb();
+        db.Projects.Add(NewProject());
+        await db.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<TaskOperationException>(() =>
+            NewService(db).GetUnassignedAsync(ProjectId, null, CancellationToken.None));
+
+        Assert.Equal(TaskErrorKind.Unauthorized, error.Kind);
+        Assert.Equal("USER_ID_REQUIRED", error.Code);
+    }
+
+    [Fact]
+    public async Task GetUnassigned_UsesViewTaskPermissionAndRejectsDeniedAccess()
+    {
+        using var db = NewDb();
+        db.Projects.Add(NewProject());
+        await db.SaveChangesAsync();
+        var access = new StubUserAccessClient { Allowed = false, IsMember = true };
+        var service = new TaskService(new TaskRepository(db), access);
+
+        var error = await Assert.ThrowsAsync<TaskOperationException>(() =>
+            service.GetUnassignedAsync(ProjectId, OwnerId, CancellationToken.None));
+
+        Assert.Equal(TaskErrorKind.Forbidden, error.Kind);
+        Assert.Equal("ACCESS_DENIED", error.Code);
+        Assert.Equal(ProjectAction.ViewTask, access.LastCheckedAction);
+    }
+
+    [Fact]
     public async Task ChangeStatus_RejectsInvalidTransition()
     {
         using var db = NewDb();
@@ -222,6 +314,7 @@ public class TaskServiceTests
     {
         public bool Allowed { get; init; }
         public bool IsMember { get; init; }
+        public ProjectAction? LastCheckedAction { get; private set; }
 
         public Task<UserAccessUserResponse?> GetUserByIdAsync(Guid id, CancellationToken ct) =>
             Task.FromResult<UserAccessUserResponse?>(null);
@@ -230,8 +323,11 @@ public class TaskServiceTests
             Task.FromResult(true);
 
         public Task<AccessCheckResponse?> CheckAccessAsync(Guid userId, Guid projectId,
-            ProjectAction action, CancellationToken ct) =>
-            Task.FromResult<AccessCheckResponse?>(new AccessCheckResponse { Allowed = Allowed });
+            ProjectAction action, CancellationToken ct)
+        {
+            LastCheckedAction = action;
+            return Task.FromResult<AccessCheckResponse?>(new AccessCheckResponse { Allowed = Allowed });
+        }
 
         public Task<bool> IsMemberAsync(Guid userId, Guid projectId, CancellationToken ct) =>
             Task.FromResult(IsMember);

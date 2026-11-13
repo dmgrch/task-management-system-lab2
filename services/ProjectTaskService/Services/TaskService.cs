@@ -55,6 +55,15 @@ public class TaskService : ITaskService
         return ToResponse(task, labels);
     }
 
+    public async Task<IReadOnlyList<TaskResponse>> GetUnassignedAsync(
+        Guid projectId, Guid? actorUserId, CancellationToken ct)
+    {
+        await GetProjectAsync(projectId, ct);
+        await CheckAccessAsync(actorUserId, projectId, ProjectAction.ViewTask, ct);
+        var tasks = await _tasks.GetUnassignedTasksAsync(projectId, ct);
+        return tasks.Select(task => ToResponse(task)).ToList();
+    }
+
     public async Task UpdateAsync(Guid id, UpdateTaskRequest request, Guid actorUserId, CancellationToken ct)
     {
         RequireUser(actorUserId, "X-User-Id is required");
